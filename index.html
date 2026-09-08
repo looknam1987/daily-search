@@ -55,7 +55,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=2').catch(() => {});
+        navigator.serviceWorker.register('./sw.js?v=3').catch(() => {});
       });
     }
 
@@ -154,19 +154,21 @@
           r.raw['จังหวัด']
         ].filter(Boolean).join(' ');
 
-        // ข้อความสำหรับกด Copy เปลี่ยนเป็น COD:
-        const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nTracking: ${r.raw['Tracking Number'] || '-'}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}`;
+        const dateVal = r.raw['DATE'] || '-';
+
+        // ข้อความสำหรับก๊อปปี้แบบรวม DATE
+        const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nDATE: ${dateVal}\nTracking: ${r.raw['Tracking Number'] || '-'}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}`;
 
         const card = document.createElement('div');
         card.className = 'bg-gray-50 border border-gray-200 rounded-lg p-3.5 text-xs text-gray-700 space-y-1.5 shadow-sm relative group';
         card.innerHTML = `
           <div class="flex justify-between items-center border-b pb-1 pr-14">
             <span class="font-bold text-blue-600">#${idx + 1} REF: ${r.raw['REFERENCE_NO'] || '-'}</span>
-            <span class="bg-gray-200 px-2 py-0.5 rounded text-[10px]">${r.raw['DATE'] || ''}</span>
           </div>
           <button onclick="copyToClipboard(\`${encodeURIComponent(textToCopy)}\`, this)" class="absolute top-2.5 right-2 bg-white border border-gray-300 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 px-2 py-1 rounded text-[11px] font-medium transition flex items-center gap-1 shadow-sm">
             📋 Copy
           </button>
+          <div><span class="font-semibold text-gray-900">DATE:</span> ${dateVal}</div>
           <div><span class="font-semibold text-gray-900">Tracking:</span> ${r.raw['Tracking Number'] || '-'}</div>
           <div><span class="font-semibold text-gray-900">ชื่อลูกค้า:</span> ${r.raw['CUSTOMER_NAME'] || '-'} (${r.raw['PHONE'] || '-'})</div>
           <div><span class="font-semibold text-gray-900">ที่อยู่:</span> ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}</div>
