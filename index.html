@@ -154,7 +154,7 @@
           r.raw['จังหวัด']
         ].filter(Boolean).join(' ');
 
-        // ข้อความสำหรับก๊อปปี้แบบอ่านง่าย
+        // เปลี่ยน Note: เป็น COD:
         const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nTracking: ${r.raw['Tracking Number'] || '-'}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}`;
 
         const card = document.createElement('div');
@@ -180,7 +180,6 @@
       });
     }
 
-    // ฟังก์ชันช่วยสำหรับการคัดลอกข้อความ
     function copyToClipboard(encodedText, btn) {
       const text = decodeURIComponent(encodedText);
       navigator.clipboard.writeText(text).then(() => {
