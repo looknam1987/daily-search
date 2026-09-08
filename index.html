@@ -155,7 +155,7 @@
         ].filter(Boolean).join(' ');
 
         // ข้อความสำหรับก๊อปปี้แบบอ่านง่าย
-        const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nTracking: ${r.raw['Tracking Number'] || '-'}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nNote: ${r.raw['REMARKS']}` : ''}`;
+        const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nTracking: ${r.raw['Tracking Number'] || '-'}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}`;
 
         const card = document.createElement('div');
         card.className = 'bg-gray-50 border border-gray-200 rounded-lg p-3.5 text-xs text-gray-700 space-y-1.5 shadow-sm relative group';
@@ -174,7 +174,7 @@
             <span><span class="font-semibold text-gray-900">สินค้า:</span> ${r.raw['ITEM_NO'] || '-'}</span>
             <span><span class="font-semibold text-gray-900">จำนวน:</span> ${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''}</span>
           </div>
-          ${r.raw['REMARKS'] ? `<div class="text-gray-500 italic"><span class="font-semibold">Note:</span> ${r.raw['REMARKS']}</div>` : ''}
+          ${r.raw['REMARKS'] ? `<div class="text-gray-500 italic"><span class="font-semibold">COD:</span> ${r.raw['REMARKS']}</div>` : ''}
         `;
         container.appendChild(card);
       });
