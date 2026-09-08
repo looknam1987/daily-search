@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Daily Status Search</title>
-
-  <!-- เชื่อมต่อ Manifest & ไอคอนสำหรับ PWA -->
+  
+  <!-- เชื่อมต่อ Manifest & PWA -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2563eb">
   <link rel="apple-touch-icon" href="icon-192.png">
 
-  <!-- โหลด Library สำหรับอ่าน Excel และ ค้นหาข้อมูล -->
+  <!-- โหลด Library อ่าน Excel และ IndexedDB -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -18,16 +18,15 @@
 <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
 
   <div class="w-full max-w-md bg-white rounded-xl shadow-lg p-6 border border-gray-200">
-    <!-- หัวข้อ -->
     <div class="text-center font-bold text-xl mb-4 text-gray-800">DAILY STATUS SEARCH</div>
     
-    <!-- ช่องค้นหา -->
+    <!-- ช่องพิมพ์คำค้นหา -->
     <div class="flex gap-2 mb-4">
-      <input type="text" id="searchInput" oninput="searchData()" placeholder="Search..." class="flex-1 border border-gray-300 p-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <input type="text" id="searchInput" oninput="searchData()" placeholder="พิมพ์คำค้นหา (Tracking, Order, Phone...)" class="flex-1 border border-gray-300 p-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
       <button onclick="searchData()" class="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700">🔍</button>
     </div>
 
-    <!-- ตัวเลือกประเภทการค้นหา -->
+    <!-- ปุ่มเลือกประเภทการค้นหา -->
     <div class="flex gap-4 text-sm mb-4 justify-center text-gray-600">
       <label class="cursor-pointer"><input type="radio" name="searchType" value="all" checked onchange="searchData()"> All</label>
       <label class="cursor-pointer"><input type="radio" name="searchType" value="tracking" onchange="searchData()"> Tracking</label>
@@ -35,18 +34,18 @@
       <label class="cursor-pointer"><input type="radio" name="searchType" value="phone" onchange="searchData()"> Phone</label>
     </div>
 
-    <!-- ปุ่มเลือก/อัปเดตไฟล์ Excel -->
+    <!-- ปุ่มอัปโหลดไฟล์ -->
     <div class="mb-5 text-center">
-      <input type="file" id="excelFile" accept=".xlsx, .xls" onchange="loadExcel(event)" class="hidden">
-      <label for="excelFile" class="inline-block cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg border border-gray-300 text-xs font-semibold transition">
-        📁 เลือก/เปลี่ยนไฟล์ Excel ในเครื่อง
+      <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" onchange="loadExcel(event)" class="hidden">
+      <label for="excelFile" class="inline-block cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2.5 rounded-lg border border-blue-200 text-xs font-semibold transition">
+        📁 เลือก/อัปเดตไฟล์ Excel ในเครื่อง
       </label>
     </div>
 
-    <!-- แสดงจำนวนรายการที่พบ -->
+    <!-- ตัวแสดงจำนวนรายการที่พบ -->
     <div class="text-sm font-bold text-gray-700 mb-4 border-b pb-2" id="resultCount">พบข้อมูล 0 รายการ</div>
 
-    <!-- ปุ่ม Action ด้านล่าง -->
+    <!-- ปุ่ม Action -->
     <div class="flex gap-3">
       <button onclick="previewResults()" class="flex-1 border border-gray-300 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-700">[ Preview ]</button>
       <button onclick="exportExcel()" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 shadow-sm">[ EXPORT EXCEL ]</button>
@@ -54,16 +53,14 @@
   </div>
 
   <script>
-    // 1. ลงทะเบียน PWA Service Worker
+    // ลงทะเบียน Service Worker สำหรับ PWA
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(() => console.log('PWA Ready!'))
-          .catch(err => console.error('PWA Error:', err));
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
       });
     }
 
-    // 2. ตั้งค่า Database ความเร็วสูงในเครื่อง (IndexedDB)
+    // กำหนดโครงสร้างฐานข้อมูล
     const db = new Dexie("StatusSearchDB");
     db.version(1).stores({
       records: '++id, tracking, order, phone, searchBlob'
@@ -71,33 +68,51 @@
 
     let currentResults = [];
 
-    // 3. อ่านไฟล์ Excel แล้วบันทึกลง IndexedDB
+    // อ่านและนำเข้าไฟล์ Excel
     async function loadExcel(e) {
       const file = e.target.files[0];
       if (!file) return;
 
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const sheetName = workbook.SheetNames[0];
-      const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+      try {
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
 
-      await db.records.clear(); // ล้างข้อมูลเก่าออก
-      
-      // แปลงข้อมูลเตรียมไว้สำหรับการค้นหาแบบทันที
-      const formattedData = json.map(row => ({
-        raw: row,
-        tracking: String(row['Tracking'] || row['tracking'] || '').toLowerCase(),
-        order: String(row['Order'] || row['order'] || '').toLowerCase(),
-        phone: String(row['Phone'] || row['phone'] || '').toLowerCase(),
-        searchBlob: Object.values(row).join(' ').toLowerCase()
-      }));
+        if (json.length === 0) {
+          alert('ไฟล์ไม่มีข้อมูล');
+          return;
+        }
 
-      await db.records.bulkAdd(formattedData);
-      alert('อัปเดตข้อมูล Excel เข้าเครื่องเรียบร้อยแล้ว!');
-      searchData();
+        await db.records.clear();
+        
+        // ดึงคอลัมน์ตรงตามไฟล์จริง
+        // Order รวม REFERENCE_NO, ORDER NO., Order Code in OMS, SO_NO
+        const formattedData = json.map(row => {
+          const trackingVal = String(row['Tracking Number'] || row['Tracking Number Prefix'] || '').trim().toLowerCase();
+          const orderVal = String(row['REFERENCE_NO'] || row['ORDER NO.'] || row['Order Code in OMS'] || row['SO_NO'] || '').trim().toLowerCase();
+          const phoneVal = String(row['PHONE'] || '').trim().toLowerCase();
+          const allBlob = Object.values(row).join(' ').toLowerCase();
+
+          return {
+            raw: row,
+            tracking: trackingVal,
+            order: orderVal,
+            phone: phoneVal,
+            searchBlob: allBlob
+          };
+        });
+
+        await db.records.bulkAdd(formattedData);
+        alert(`โหลดข้อมูลสำเร็จเรียบร้อย! ทั้งหมด ${json.length} รายการ`);
+        searchData();
+      } catch (err) {
+        alert('เกิดข้อผิดพลาดในการอ่านไฟล์ โปรดใช้ไฟล์ .xlsx');
+        console.error(err);
+      }
     }
 
-    // 4. ฟังก์ชันค้นหาข้อมูลความเร็วสูง
+    // ฟังก์ชันค้นหาข้อมูลความเร็วสูง
     async function searchData() {
       const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
       const type = document.querySelector('input[name="searchType"]:checked').value;
@@ -123,7 +138,7 @@
       document.getElementById('resultCount').innerText = `พบข้อมูล ${currentResults.length} รายการ`;
     }
 
-    // 5. ส่งออกเฉพาะข้อมูลที่ค้นหาพบเป็น Excel
+    // ส่งออก Excel
     function exportExcel() {
       if (currentResults.length === 0) return alert('ไม่มีข้อมูลสำหรับส่งออก');
       const exportData = currentResults.map(r => r.raw);
@@ -133,11 +148,11 @@
       XLSX.writeFile(wb, "Search_Result.xlsx");
     }
 
-    // 6. Preview ดูข้อมูล
+    // ดูข้อมูล Preview
     function previewResults() {
       if (currentResults.length === 0) return alert('ไม่มีข้อมูลให้แสดง');
+      alert(`พบข้อมูลทั้งหมด ${currentResults.length} รายการ\nกด F12 เพื่อดูข้อมูลรายละเอียดใน Console ได้ครับ`);
       console.log(currentResults.map(r => r.raw));
-      alert(`มีข้อมูลทั้งหมด ${currentResults.length} รายการ (เปิดดูรายละเอียดใน F12 Console ได้)`);
     }
   </script>
 </body>
