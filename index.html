@@ -55,7 +55,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=3').catch(() => {});
+        navigator.serviceWorker.register('./sw.js?v=4').catch(() => {});
       });
     }
 
@@ -155,9 +155,12 @@
         ].filter(Boolean).join(' ');
 
         const dateVal = r.raw['DATE'] || '-';
+        const receivingDateVal = r.raw['Receiving Date'] || '-';
+        const statusVal = r.raw['Status'] || '-';
+        const remarkVal = r.raw['Remark'] || '-';
 
-        // ข้อความสำหรับก๊อปปี้แบบรวม DATE
-        const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nDATE: ${dateVal}\nTracking: ${r.raw['Tracking Number'] || '-'}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}`;
+        // ข้อความสำหรับก๊อปปี้
+        const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nDATE: ${dateVal}\nTracking: ${r.raw['Tracking Number'] || '-'}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}\nReceiving Date: ${receivingDateVal}\nStatus: ${statusVal}\nRemark: ${remarkVal}`;
 
         const card = document.createElement('div');
         card.className = 'bg-gray-50 border border-gray-200 rounded-lg p-3.5 text-xs text-gray-700 space-y-1.5 shadow-sm relative group';
@@ -177,6 +180,13 @@
             <span><span class="font-semibold text-gray-900">จำนวน:</span> ${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''}</span>
           </div>
           ${r.raw['REMARKS'] ? `<div class="text-gray-500 italic"><span class="font-semibold">COD:</span> ${r.raw['REMARKS']}</div>` : ''}
+          
+          <!-- ส่วนข้อมูลที่เพิ่มด้านล่างสุด -->
+          <div class="border-t pt-1.5 mt-1.5 space-y-1 text-gray-800">
+            <div><span class="font-semibold text-gray-900">Receiving Date:</span> ${receivingDateVal}</div>
+            <div><span class="font-semibold text-gray-900">Status:</span> ${statusVal}</div>
+            <div><span class="font-semibold text-gray-900">Remark:</span> ${remarkVal}</div>
+          </div>
         `;
         container.appendChild(card);
       });
@@ -223,7 +233,10 @@
           "ADDRESS": fullAddress,
           "POST_CODE": r.raw['POST_CODE'] || "",
           "PHONE": r.raw['PHONE'] || "",
-          "Tracking Number": r.raw['Tracking Number'] || ""
+          "Tracking Number": r.raw['Tracking Number'] || "",
+          "Receiving Date": r.raw['Receiving Date'] || "",
+          "Status": r.raw['Status'] || "",
+          "Remark": r.raw['Remark'] || ""
         };
       });
 
