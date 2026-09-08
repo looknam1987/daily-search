@@ -55,7 +55,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=4').catch(() => {});
+        navigator.serviceWorker.register('./sw.js?v=5').catch(() => {});
       });
     }
 
@@ -65,6 +65,36 @@
     });
 
     let currentResults = [];
+
+    // ฟังก์ชันแปลงวันที่ให้เป็นรูปแบบ dd/mmm/yyyy
+    function formatDate(val) {
+      if (!val) return '-';
+      
+      let dateObj;
+
+      // กรณีค่าจาก Excel เป็นตัวเลข Serial Date
+      if (typeof val === 'number' || !isNaN(val)) {
+        const parsedNum = Number(val);
+        if (parsedNum > 20000 && parsedNum < 60000) {
+          dateObj = new Date(Math.round((parsedNum - 25569) * 86400 * 1000));
+        }
+      }
+
+      if (!dateObj) {
+        dateObj = new Date(val);
+      }
+
+      if (isNaN(dateObj.getTime())) {
+        return String(val); // ถ้า parse วันที่ไม่สำเร็จ ให้แสดงค่าเดิมจาก Excel
+      }
+
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const month = months[dateObj.getMonth()];
+      const year = dateObj.getFullYear();
+
+      return `${day}/${month}/${year}`;
+    }
 
     async function loadExcel(e) {
       const file = e.target.files[0];
@@ -154,13 +184,13 @@
           r.raw['จังหวัด']
         ].filter(Boolean).join(' ');
 
-        const dateVal = r.raw['DATE'] || '-';
-        const receivingDateVal = r.raw['Receiving Date'] || '-';
+        const dateVal = formatDate(r.raw['DATE']);
+        const receivingDateVal = formatDate(r.raw['Receiving Date']);
         const statusVal = r.raw['Status'] || '-';
         const remarkVal = r.raw['Remark'] || '-';
 
         // ข้อความสำหรับก๊อปปี้
-        const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nDATE: ${dateVal}\nTracking: ${r.raw['Tracking Number'] || '-'}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}\nReceiving Date: ${receivingDateVal}\nStatus: ${statusVal}\nRemark: ${remarkVal}`;
+        const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nTracking: ${r.raw['Tracking Number'] || '-'}\nDATE: ${dateVal}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}\nReceiving Date: ${receivingDateVal}\nStatus: ${statusVal}\nRemark: ${remarkVal}`;
 
         const card = document.createElement('div');
         card.className = 'bg-gray-50 border border-gray-200 rounded-lg p-3.5 text-xs text-gray-700 space-y-1.5 shadow-sm relative group';
@@ -171,8 +201,8 @@
           <button onclick="copyToClipboard(\`${encodeURIComponent(textToCopy)}\`, this)" class="absolute top-2.5 right-2 bg-white border border-gray-300 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 px-2 py-1 rounded text-[11px] font-medium transition flex items-center gap-1 shadow-sm">
             📋 Copy
           </button>
-          <div><span class="font-semibold text-gray-900">DATE:</span> ${dateVal}</div>
           <div><span class="font-semibold text-gray-900">Tracking:</span> ${r.raw['Tracking Number'] || '-'}</div>
+          <div><span class="font-semibold text-gray-900">DATE:</span> ${dateVal}</div>
           <div><span class="font-semibold text-gray-900">ชื่อลูกค้า:</span> ${r.raw['CUSTOMER_NAME'] || '-'} (${r.raw['PHONE'] || '-'})</div>
           <div><span class="font-semibold text-gray-900">ที่อยู่:</span> ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}</div>
           <div class="flex gap-4">
@@ -181,7 +211,7 @@
           </div>
           ${r.raw['REMARKS'] ? `<div class="text-gray-500 italic"><span class="font-semibold">COD:</span> ${r.raw['REMARKS']}</div>` : ''}
           
-          <!-- ส่วนข้อมูลที่เพิ่มด้านล่างสุด -->
+          <!-- ข้อมูลด้านล่างสุด -->
           <div class="border-t pt-1.5 mt-1.5 space-y-1 text-gray-800">
             <div><span class="font-semibold text-gray-900">Receiving Date:</span> ${receivingDateVal}</div>
             <div><span class="font-semibold text-gray-900">Status:</span> ${statusVal}</div>
@@ -223,7 +253,7 @@
 
         return {
           "LINE_NO": r.raw['LINE_NO'] || "",
-          "DATE": r.raw['DATE'] || "",
+          "DATE": formatDate(r.raw['DATE']),
           "REFERENCE_NO": r.raw['REFERENCE_NO'] || "",
           "REMARKS": r.raw['REMARKS'] || "",
           "ITEM_NO": r.raw['ITEM_NO'] || "",
@@ -234,7 +264,7 @@
           "POST_CODE": r.raw['POST_CODE'] || "",
           "PHONE": r.raw['PHONE'] || "",
           "Tracking Number": r.raw['Tracking Number'] || "",
-          "Receiving Date": r.raw['Receiving Date'] || "",
+          "Receiving Date": formatDate(r.raw['Receiving Date']),
           "Status": r.raw['Status'] || "",
           "Remark": r.raw['Remark'] || ""
         };
