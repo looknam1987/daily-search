@@ -55,7 +55,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(() => {});
+        navigator.serviceWorker.register('./sw.js?v=2').catch(() => {});
       });
     }
 
@@ -154,7 +154,7 @@
           r.raw['จังหวัด']
         ].filter(Boolean).join(' ');
 
-        // เปลี่ยน Note: เป็น COD:
+        // ข้อความสำหรับกด Copy เปลี่ยนเป็น COD:
         const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nTracking: ${r.raw['Tracking Number'] || '-'}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}`;
 
         const card = document.createElement('div');
