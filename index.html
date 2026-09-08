@@ -13,16 +13,18 @@
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+<body class="bg-gray-100 min-h-screen p-4">
 
-  <div class="w-full max-w-md bg-white rounded-xl shadow-lg p-6 border border-gray-200">
+  <div class="max-w-xl mx-auto bg-white rounded-xl shadow-lg p-6 border border-gray-200">
     <div class="text-center font-bold text-xl mb-4 text-gray-800">DAILY STATUS SEARCH</div>
     
+    <!-- ช่องค้นหา -->
     <div class="flex gap-2 mb-4">
       <input type="text" id="searchInput" oninput="searchData()" placeholder="พิมพ์คำค้นหา (Tracking, Order, Phone...)" class="flex-1 border border-gray-300 p-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
       <button onclick="searchData()" class="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700">🔍</button>
     </div>
 
+    <!-- ตัวเลือกประเภทการค้นหา -->
     <div class="flex gap-4 text-sm mb-4 justify-center text-gray-600">
       <label class="cursor-pointer"><input type="radio" name="searchType" value="all" checked onchange="searchData()"> All</label>
       <label class="cursor-pointer"><input type="radio" name="searchType" value="tracking" onchange="searchData()"> Tracking</label>
@@ -30,6 +32,7 @@
       <label class="cursor-pointer"><input type="radio" name="searchType" value="phone" onchange="searchData()"> Phone</label>
     </div>
 
+    <!-- ปุ่มเลือกไฟล์ Excel -->
     <div class="mb-5 text-center">
       <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" onchange="loadExcel(event)" class="hidden">
       <label for="excelFile" class="inline-block cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2.5 rounded-lg border border-blue-200 text-xs font-semibold transition">
@@ -37,11 +40,15 @@
       </label>
     </div>
 
-    <div class="text-sm font-bold text-gray-700 mb-4 border-b pb-2" id="resultCount">พบข้อมูล 0 รายการ</div>
+    <!-- จำนวนรายการและปุ่ม Export -->
+    <div class="flex justify-between items-center mb-4 border-b pb-2">
+      <div class="text-sm font-bold text-gray-700" id="resultCount">พบข้อมูล 0 รายการ</div>
+      <button onclick="exportExcel()" class="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-green-700 shadow-sm">[ EXPORT EXCEL ]</button>
+    </div>
 
-    <div class="flex gap-3">
-      <button onclick="previewResults()" class="flex-1 border border-gray-300 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-700">[ Preview ]</button>
-      <button onclick="exportExcel()" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 shadow-sm">[ EXPORT EXCEL ]</button>
+    <!-- กล่องแสดงข้อความผลลัพธ์ -->
+    <div id="resultsContainer" class="space-y-3 max-h-[450px] overflow-y-auto pr-1">
+      <!-- ข้อมูลจากการค้นหาจะมาปรากฏตรงนี้ -->
     </div>
   </div>
 
@@ -103,10 +110,12 @@
     async function searchData() {
       const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
       const type = document.querySelector('input[name="searchType"]:checked').value;
+      const container = document.getElementById('resultsContainer');
 
       if (!keyword) {
         currentResults = [];
         document.getElementById('resultCount').innerText = 'พบข้อมูล 0 รายการ';
+        container.innerHTML = '';
         return;
       }
 
@@ -123,14 +132,75 @@
       }
 
       document.getElementById('resultCount').innerText = `พบข้อมูล ${currentResults.length} รายการ`;
+      renderCards();
     }
 
-    // Export เฉพาะคอลัมน์ที่กำหนดไว้
+    function renderCards() {
+      const container = document.getElementById('resultsContainer');
+      container.innerHTML = '';
+
+      if (currentResults.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-400 py-4 text-sm">ไม่พบข้อมูลที่ค้นหา</div>';
+        return;
+      }
+
+      currentResults.forEach((r, idx) => {
+        const fullAddress = [
+          r.raw['ที่อยู่'],
+          r.raw['ซอย'],
+          r.raw['ถนน'],
+          r.raw['ตำบล'],
+          r.raw['อำเภอ'],
+          r.raw['จังหวัด']
+        ].filter(Boolean).join(' ');
+
+        // ข้อความสำหรับก๊อปปี้แบบอ่านง่าย
+        const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nTracking: ${r.raw['Tracking Number'] || '-'}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nNote: ${r.raw['REMARKS']}` : ''}`;
+
+        const card = document.createElement('div');
+        card.className = 'bg-gray-50 border border-gray-200 rounded-lg p-3.5 text-xs text-gray-700 space-y-1.5 shadow-sm relative group';
+        card.innerHTML = `
+          <div class="flex justify-between items-center border-b pb-1 pr-14">
+            <span class="font-bold text-blue-600">#${idx + 1} REF: ${r.raw['REFERENCE_NO'] || '-'}</span>
+            <span class="bg-gray-200 px-2 py-0.5 rounded text-[10px]">${r.raw['DATE'] || ''}</span>
+          </div>
+          <button onclick="copyToClipboard(\`${encodeURIComponent(textToCopy)}\`, this)" class="absolute top-2.5 right-2 bg-white border border-gray-300 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 px-2 py-1 rounded text-[11px] font-medium transition flex items-center gap-1 shadow-sm">
+            📋 Copy
+          </button>
+          <div><span class="font-semibold text-gray-900">Tracking:</span> ${r.raw['Tracking Number'] || '-'}</div>
+          <div><span class="font-semibold text-gray-900">ชื่อลูกค้า:</span> ${r.raw['CUSTOMER_NAME'] || '-'} (${r.raw['PHONE'] || '-'})</div>
+          <div><span class="font-semibold text-gray-900">ที่อยู่:</span> ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}</div>
+          <div class="flex gap-4">
+            <span><span class="font-semibold text-gray-900">สินค้า:</span> ${r.raw['ITEM_NO'] || '-'}</span>
+            <span><span class="font-semibold text-gray-900">จำนวน:</span> ${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''}</span>
+          </div>
+          ${r.raw['REMARKS'] ? `<div class="text-gray-500 italic"><span class="font-semibold">Note:</span> ${r.raw['REMARKS']}</div>` : ''}
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // ฟังก์ชันช่วยสำหรับการคัดลอกข้อความ
+    function copyToClipboard(encodedText, btn) {
+      const text = decodeURIComponent(encodedText);
+      navigator.clipboard.writeText(text).then(() => {
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '✅ สำเร็จ';
+        btn.classList.add('bg-green-50', 'text-green-600', 'border-green-300');
+        setTimeout(() => {
+          btn.innerHTML = originalText;
+          btn.classList.remove('bg-green-50', 'text-green-600', 'border-green-300');
+        }, 1500);
+      }).catch(err => {
+        alert('ไม่สามารถคัดลอกข้อความได้');
+        console.error(err);
+      });
+    }
+
     function exportExcel() {
       if (currentResults.length === 0) return alert('ไม่มีข้อมูลสำหรับส่งออก');
       
       const exportData = currentResults.map(r => {
-        // รวมรายละเอียดที่อยู่อย่างต่อเนื่อง
         const fullAddress = [
           r.raw['ที่อยู่'],
           r.raw['ซอย'],
@@ -160,12 +230,6 @@
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "SearchResults");
       XLSX.writeFile(wb, "Search_Result.xlsx");
-    }
-
-    function previewResults() {
-      if (currentResults.length === 0) return alert('ไม่มีข้อมูลให้แสดง');
-      alert(`พบข้อมูลทั้งหมด ${currentResults.length} รายการ\nกด F12 เพื่อดูข้อมูลรายละเอียดใน Console ได้ครับ`);
-      console.log(currentResults.map(r => r.raw));
     }
   </script>
 </body>
