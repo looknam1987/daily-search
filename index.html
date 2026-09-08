@@ -53,26 +53,27 @@
   </div>
 
   <script>
+    // ปลดล็อกการจำ Service Worker เก่า
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=5').catch(() => {});
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
       });
     }
 
-    const db = new Dexie("StatusSearchDB");
+    // เปลี่ยนชื่อ DB เพื่อล้าง IndexedDB บนมือถืออัตโนมัติ
+    const db = new Dexie("StatusSearchDB_v2");
     db.version(1).stores({
       records: '++id, tracking, order, phone, searchBlob'
     });
 
     let currentResults = [];
 
-    // ฟังก์ชันแปลงวันที่ให้เป็นรูปแบบ dd/mmm/yyyy
     function formatDate(val) {
       if (!val) return '-';
       
       let dateObj;
-
-      // กรณีค่าจาก Excel เป็นตัวเลข Serial Date
       if (typeof val === 'number' || !isNaN(val)) {
         const parsedNum = Number(val);
         if (parsedNum > 20000 && parsedNum < 60000) {
@@ -85,7 +86,7 @@
       }
 
       if (isNaN(dateObj.getTime())) {
-        return String(val); // ถ้า parse วันที่ไม่สำเร็จ ให้แสดงค่าเดิมจาก Excel
+        return String(val);
       }
 
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -189,7 +190,6 @@
         const statusVal = r.raw['Status'] || '-';
         const remarkVal = r.raw['Remark'] || '-';
 
-        // ข้อความสำหรับก๊อปปี้
         const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nTracking: ${r.raw['Tracking Number'] || '-'}\nDATE: ${dateVal}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}\nReceiving Date: ${receivingDateVal}\nStatus: ${statusVal}\nRemark: ${remarkVal}`;
 
         const card = document.createElement('div');
@@ -211,7 +211,6 @@
           </div>
           ${r.raw['REMARKS'] ? `<div class="text-gray-500 italic"><span class="font-semibold">COD:</span> ${r.raw['REMARKS']}</div>` : ''}
           
-          <!-- ข้อมูลด้านล่างสุด -->
           <div class="border-t pt-1.5 mt-1.5 space-y-1 text-gray-800">
             <div><span class="font-semibold text-gray-900">Receiving Date:</span> ${receivingDateVal}</div>
             <div><span class="font-semibold text-gray-900">Status:</span> ${statusVal}</div>
