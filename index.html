@@ -2,12 +2,14 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Daily Status Search</title>
   
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2563eb">
-  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="StatusSearch">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2642/2642232.png">
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
@@ -35,7 +37,7 @@
     <!-- ปุ่มเลือกไฟล์ Excel -->
     <div class="mb-5 text-center">
       <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" onchange="loadExcel(event)" class="hidden">
-      <label for="excelFile" class="inline-block cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2.5 rounded-lg border border-blue-200 text-xs font-semibold transition">
+      <label for="excelFile" id="uploadBtnLabel" class="inline-block cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2.5 rounded-lg border border-blue-200 text-xs font-semibold transition">
         📁 เลือก/อัปเดตไฟล์ Excel ในเครื่อง
       </label>
     </div>
@@ -53,17 +55,7 @@
   </div>
 
   <script>
-    // ปลดล็อกการจำ Service Worker เก่า
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(registrations => {
-        for (let registration of registrations) {
-          registration.unregister();
-        }
-      });
-    }
-
-    // เปลี่ยนชื่อ DB เพื่อล้าง IndexedDB บนมือถืออัตโนมัติ
-    const db = new Dexie("StatusSearchDB_v2");
+    const db = new Dexie("StatusSearchDB_v5");
     db.version(1).stores({
       records: '++id, tracking, order, phone, searchBlob'
     });
@@ -72,7 +64,6 @@
 
     function formatDate(val) {
       if (!val) return '-';
-      
       let dateObj;
       if (typeof val === 'number' || !isNaN(val)) {
         const parsedNum = Number(val);
@@ -80,62 +71,65 @@
           dateObj = new Date(Math.round((parsedNum - 25569) * 86400 * 1000));
         }
       }
-
-      if (!dateObj) {
-        dateObj = new Date(val);
-      }
-
-      if (isNaN(dateObj.getTime())) {
-        return String(val);
-      }
+      if (!dateObj) dateObj = new Date(val);
+      if (isNaN(dateObj.getTime())) return String(val);
 
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      const month = months[dateObj.getMonth()];
-      const year = dateObj.getFullYear();
-
-      return `${day}/${month}/${year}`;
+      return `${String(dateObj.getDate()).padStart(2, '0')}/${months[dateObj.getMonth()]}/${dateObj.getFullYear()}`;
     }
 
     async function loadExcel(e) {
       const file = e.target.files[0];
       if (!file) return;
 
-      try {
-        const data = await file.arrayBuffer();
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+      const label = document.getElementById('uploadBtnLabel');
+      label.innerText = '⏳ กำลังประมวลผลไฟล์...';
 
-        if (json.length === 0) {
-          alert('ไฟล์ไม่มีข้อมูล');
-          return;
+      setTimeout(async () => {
+        try {
+          const data = await file.arrayBuffer();
+          // ใช้ read แบบวิเคราะห์เฉพาะข้อมูลที่จำเป็นเพื่อลด Memory บน iOS
+          const workbook = XLSX.read(data, { type: 'array', cellDates: false, cellStyles: false, cellFormulas: false });
+          const sheetName = workbook.SheetNames[0];
+          const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+
+          if (json.length === 0) {
+            alert('ไฟล์ไม่มีข้อมูล');
+            label.innerText = '📁 เลือก/อัปเดตไฟล์ Excel ในเครื่อง';
+            return;
+          }
+
+          await db.records.clear();
+
+          // เคลียร์ memory ด้วยการจัดกลุ่มบันทึกครั้งละ 2,000 รายการ
+          const chunkSize = 2000;
+          for (let i = 0; i < json.length; i += chunkSize) {
+            const chunk = json.slice(i, i + chunkSize).map(row => {
+              const trackingVal = String(row['Tracking Number'] || row['Tracking Number Prefix'] || '').trim().toLowerCase();
+              const orderVal = String(row['REFERENCE_NO'] || row['ORDER NO.'] || row['Order Code in OMS'] || row['SO_NO'] || '').trim().toLowerCase();
+              const phoneVal = String(row['PHONE'] || '').trim().toLowerCase();
+              const allBlob = Object.values(row).join(' ').toLowerCase();
+
+              return {
+                raw: row,
+                tracking: trackingVal,
+                order: orderVal,
+                phone: phoneVal,
+                searchBlob: allBlob
+              };
+            });
+            await db.records.bulkAdd(chunk);
+          }
+
+          alert(`นำเข้าข้อมูลสำเร็จแล้ว! ทั้งหมด ${json.length} รายการ`);
+          label.innerText = '📁 เลือก/อัปเดตไฟล์ Excel ในเครื่อง';
+          searchData();
+        } catch (err) {
+          alert('เกิดข้อผิดพลาดในการอ่านไฟล์ โปรดลองใหม่อีกครั้ง');
+          label.innerText = '📁 เลือก/อัปเดตไฟล์ Excel ในเครื่อง';
+          console.error(err);
         }
-
-        await db.records.clear();
-        
-        const formattedData = json.map(row => {
-          const trackingVal = String(row['Tracking Number'] || row['Tracking Number Prefix'] || '').trim().toLowerCase();
-          const orderVal = String(row['REFERENCE_NO'] || row['ORDER NO.'] || row['Order Code in OMS'] || row['SO_NO'] || '').trim().toLowerCase();
-          const phoneVal = String(row['PHONE'] || '').trim().toLowerCase();
-          const allBlob = Object.values(row).join(' ').toLowerCase();
-
-          return {
-            raw: row,
-            tracking: trackingVal,
-            order: orderVal,
-            phone: phoneVal,
-            searchBlob: allBlob
-          };
-        });
-
-        await db.records.bulkAdd(formattedData);
-        alert(`โหลดข้อมูลสำเร็จเรียบร้อย! ทั้งหมด ${json.length} รายการ`);
-        searchData();
-      } catch (err) {
-        alert('เกิดข้อผิดพลาดในการอ่านไฟล์ โปรดใช้ไฟล์ .xlsx');
-        console.error(err);
-      }
+      }, 100);
     }
 
     async function searchData() {
@@ -177,12 +171,7 @@
 
       currentResults.forEach((r, idx) => {
         const fullAddress = [
-          r.raw['ที่อยู่'],
-          r.raw['ซอย'],
-          r.raw['ถนน'],
-          r.raw['ตำบล'],
-          r.raw['อำเภอ'],
-          r.raw['จังหวัด']
+          r.raw['ที่อยู่'], r.raw['ซอย'], r.raw['ถนน'], r.raw['ตำบล'], r.raw['อำเภอ'], r.raw['จังหวัด']
         ].filter(Boolean).join(' ');
 
         const dateVal = formatDate(r.raw['DATE']);
@@ -242,12 +231,7 @@
       
       const exportData = currentResults.map(r => {
         const fullAddress = [
-          r.raw['ที่อยู่'],
-          r.raw['ซอย'],
-          r.raw['ถนน'],
-          r.raw['ตำบล'],
-          r.raw['อำเภอ'],
-          r.raw['จังหวัด']
+          r.raw['ที่อยู่'], r.raw['ซอย'], r.raw['ถนน'], r.raw['ตำบล'], r.raw['อำเภอ'], r.raw['จังหวัด']
         ].filter(Boolean).join(' ');
 
         return {
