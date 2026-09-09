@@ -55,7 +55,7 @@
   </div>
 
   <script>
-    const db = new Dexie("StatusSearchDB_v5");
+    const db = new Dexie("StatusSearchDB_v6");
     db.version(1).stores({
       records: '++id, tracking, order, phone, searchBlob'
     });
@@ -83,53 +83,63 @@
       if (!file) return;
 
       const label = document.getElementById('uploadBtnLabel');
-      label.innerText = '⏳ กำลังประมวลผลไฟล์...';
+      label.innerText = '⏳ กำลังอ่านไฟล์...';
 
+      // ใช้ setTimeout เพื่อเปิดโอกาสให้ UI อัปเดตข้อความบนหน้าจอก่อนประมวลผล
       setTimeout(async () => {
         try {
           const data = await file.arrayBuffer();
-          // ใช้ read แบบวิเคราะห์เฉพาะข้อมูลที่จำเป็นเพื่อลด Memory บน iOS
-          const workbook = XLSX.read(data, { type: 'array', cellDates: false, cellStyles: false, cellFormulas: false });
-          const sheetName = workbook.SheetNames[0];
-          const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
-
-          if (json.length === 0) {
-            alert('ไฟล์ไม่มีข้อมูล');
+          const workbook = XLSX.read(data, { type: 'array' });
+          
+          if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+            alert('ไม่พบ Sheet ข้อมูลในไฟล์นี้');
             label.innerText = '📁 เลือก/อัปเดตไฟล์ Excel ในเครื่อง';
             return;
           }
 
+          const sheetName = workbook.SheetNames[0];
+          const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+
+          if (!json || json.length === 0) {
+            alert('ไม่พบแถวข้อมูลใน Sheet');
+            label.innerText = '📁 เลือก/อัปเดตไฟล์ Excel ในเครื่อง';
+            return;
+          }
+
+          label.innerText = '⏳ กำลังบันทึกข้อมูลเข้าแอป...';
+
           await db.records.clear();
 
-          // เคลียร์ memory ด้วยการจัดกลุ่มบันทึกครั้งละ 2,000 รายการ
-          const chunkSize = 2000;
-          for (let i = 0; i < json.length; i += chunkSize) {
-            const chunk = json.slice(i, i + chunkSize).map(row => {
-              const trackingVal = String(row['Tracking Number'] || row['Tracking Number Prefix'] || '').trim().toLowerCase();
-              const orderVal = String(row['REFERENCE_NO'] || row['ORDER NO.'] || row['Order Code in OMS'] || row['SO_NO'] || '').trim().toLowerCase();
-              const phoneVal = String(row['PHONE'] || '').trim().toLowerCase();
-              const allBlob = Object.values(row).join(' ').toLowerCase();
+          const formattedData = json.map(row => {
+            const trackingVal = String(row['Tracking Number'] || row['Tracking Number Prefix'] || '').trim().toLowerCase();
+            const orderVal = String(row['REFERENCE_NO'] || row['ORDER NO.'] || row['Order Code in OMS'] || row['SO_NO'] || '').trim().toLowerCase();
+            const phoneVal = String(row['PHONE'] || '').trim().toLowerCase();
+            const allBlob = Object.values(row).join(' ').toLowerCase();
 
-              return {
-                raw: row,
-                tracking: trackingVal,
-                order: orderVal,
-                phone: phoneVal,
-                searchBlob: allBlob
-              };
-            });
-            await db.records.bulkAdd(chunk);
-          }
+            return {
+              raw: row,
+              tracking: trackingVal,
+              order: orderVal,
+              phone: phoneVal,
+              searchBlob: allBlob
+            };
+          });
+
+          await db.records.bulkAdd(formattedData);
 
           alert(`นำเข้าข้อมูลสำเร็จแล้ว! ทั้งหมด ${json.length} รายการ`);
           label.innerText = '📁 เลือก/อัปเดตไฟล์ Excel ในเครื่อง';
+          
+          // ล้างค่าช่องไฟล์เพื่อให้เลือกไฟล์เดิมซ้ำได้ในอนาคต
+          e.target.value = '';
           searchData();
         } catch (err) {
-          alert('เกิดข้อผิดพลาดในการอ่านไฟล์ โปรดลองใหม่อีกครั้ง');
+          alert('เกิดข้อผิดพลาด: ' + (err.message || 'ไม่สามารถอ่านไฟล์ได้'));
           label.innerText = '📁 เลือก/อัปเดตไฟล์ Excel ในเครื่อง';
+          e.target.value = '';
           console.error(err);
         }
-      }, 100);
+      }, 200);
     }
 
     async function searchData() {
