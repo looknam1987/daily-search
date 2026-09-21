@@ -20,10 +20,16 @@
   <div class="max-w-xl mx-auto bg-white rounded-xl shadow-lg p-6 border border-gray-200">
     <div class="text-center font-bold text-xl mb-4 text-gray-800">DAILY STATUS SEARCH</div>
     
-    <!-- ช่องค้นหา -->
+    <!-- ช่องค้นหา พร้อมปุ่มล้างข้อมูลและปุ่มค้นหา -->
     <div class="flex gap-2 mb-4">
-      <input type="text" id="searchInput" oninput="searchData()" placeholder="พิมพ์คำค้นหา (Tracking, Order, Phone...)" class="flex-1 border border-gray-300 p-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-      <button onclick="searchData()" class="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700">🔍</button>
+      <div class="relative flex-1">
+        <input type="text" id="searchInput" oninput="debounceSearch()" placeholder="พิมพ์คำค้นหา (Tracking, Order, Phone...)" class="w-full border border-gray-300 p-2.5 pr-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <!-- ปุ่มเคลียร์คำค้นหา (❌) -->
+        <button id="clearBtn" onclick="clearSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 font-bold text-sm bg-gray-100 hover:bg-gray-200 rounded-full w-5 h-5 flex items-center justify-center">
+          ✕
+        </button>
+      </div>
+      <button onclick="searchData()" class="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 font-medium">🔍</button>
     </div>
 
     <!-- ตัวเลือกประเภทการค้นหา -->
@@ -55,12 +61,13 @@
   </div>
 
   <script>
-    const db = new Dexie("StatusSearchDB_v6");
+    const db = new Dexie("StatusSearchDB_v7");
     db.version(1).stores({
       records: '++id, tracking, order, phone, searchBlob'
     });
 
     let currentResults = [];
+    let searchTimer = null;
 
     function formatDate(val) {
       if (!val) return '-';
@@ -85,7 +92,6 @@
       const label = document.getElementById('uploadBtnLabel');
       label.innerText = '⏳ กำลังอ่านไฟล์...';
 
-      // ใช้ setTimeout เพื่อเปิดโอกาสให้ UI อัปเดตข้อความบนหน้าจอก่อนประมวลผล
       setTimeout(async () => {
         try {
           const data = await file.arrayBuffer();
@@ -106,31 +112,51 @@
             return;
           }
 
-          label.innerText = '⏳ กำลังบันทึกข้อมูลเข้าแอป...';
+          label.innerText = '⏳ กำลังรวมออเดอร์ซ้ำ...';
 
           await db.records.clear();
 
-          const formattedData = json.map(row => {
-            const trackingVal = String(row['Tracking Number'] || row['Tracking Number Prefix'] || '').trim().toLowerCase();
-            const orderVal = String(row['REFERENCE_NO'] || row['ORDER NO.'] || row['Order Code in OMS'] || row['SO_NO'] || '').trim().toLowerCase();
-            const phoneVal = String(row['PHONE'] || '').trim().toLowerCase();
-            const allBlob = Object.values(row).join(' ').toLowerCase();
+          const groupedMap = new Map();
 
-            return {
-              raw: row,
-              tracking: trackingVal,
-              order: orderVal,
-              phone: phoneVal,
-              searchBlob: allBlob
+          json.forEach(row => {
+            const refNo = String(row['REFERENCE_NO'] || row['ORDER NO.'] || row['Order Code in OMS'] || row['SO_NO'] || '').trim();
+            const trackingNo = String(row['Tracking Number'] || row['Tracking Number Prefix'] || '').trim();
+            
+            const groupKey = refNo ? refNo.toLowerCase() : (trackingNo ? trackingNo.toLowerCase() : Math.random().toString());
+
+            const itemInfo = {
+              itemNo: String(row['ITEM_NO'] || '-').trim(),
+              qty: String(row['QTY'] || '1').trim(),
+              uom: String(row['UOM'] || '').trim()
             };
+
+            if (groupedMap.has(groupKey)) {
+              const existing = groupedMap.get(groupKey);
+              existing.items.push(itemInfo);
+              existing.searchBlob += ` ${itemInfo.itemNo}`;
+            } else {
+              const trackingVal = trackingNo.toLowerCase();
+              const orderVal = refNo.toLowerCase();
+              const phoneVal = String(row['PHONE'] || '').trim().toLowerCase();
+              const allBlob = Object.values(row).join(' ').toLowerCase();
+
+              groupedMap.set(groupKey, {
+                raw: row,
+                tracking: trackingVal,
+                order: orderVal,
+                phone: phoneVal,
+                searchBlob: allBlob,
+                items: [itemInfo]
+              });
+            }
           });
 
+          const formattedData = Array.from(groupedMap.values());
           await db.records.bulkAdd(formattedData);
 
-          alert(`นำเข้าข้อมูลสำเร็จแล้ว! ทั้งหมด ${json.length} รายการ`);
+          alert(`นำเข้าข้อมูลสำเร็จแล้ว! รวมทั้งหมด ${formattedData.length} ออเดอร์ (จาก ${json.length} รายการ)`);
           label.innerText = '📁 เลือก/อัปเดตไฟล์ Excel ในเครื่อง';
           
-          // ล้างค่าช่องไฟล์เพื่อให้เลือกไฟล์เดิมซ้ำได้ในอนาคต
           e.target.value = '';
           searchData();
         } catch (err) {
@@ -140,6 +166,33 @@
           console.error(err);
         }
       }, 200);
+    }
+
+    // ฟังก์ชันหน่วงเวลาค้นหา ลดอาการกระตุก/ค้าง ขณะพิมพ์
+    function debounceSearch() {
+      const input = document.getElementById('searchInput');
+      const clearBtn = document.getElementById('clearBtn');
+      
+      // แสดง/ซ่อน ปุ่ม ✕ ตามข้อความในช่องค้นหา
+      if (input.value.trim() !== '') {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        searchData();
+      }, 300); // รอพิมพ์หยุด 0.3 วินาทีค่อยค้นหา
+    }
+
+    // ฟังก์ชันเคลียร์ค่าค้นหา
+    function clearSearch() {
+      const input = document.getElementById('searchInput');
+      input.value = '';
+      document.getElementById('clearBtn').classList.add('hidden');
+      input.focus();
+      searchData();
     }
 
     async function searchData() {
@@ -189,7 +242,13 @@
         const statusVal = r.raw['Status'] || '-';
         const remarkVal = r.raw['Remark'] || '-';
 
-        const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nTracking: ${r.raw['Tracking Number'] || '-'}\nDATE: ${dateVal}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\nสินค้า: ${r.raw['ITEM_NO'] || '-'} (${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''})${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}\nReceiving Date: ${receivingDateVal}\nStatus: ${statusVal}\nRemark: ${remarkVal}`;
+        const itemsCopyText = r.items.map(it => `สินค้า: ${it.itemNo} ${it.qty} ${it.uom}`.trim()).join('\n');
+
+        const textToCopy = `REF: ${r.raw['REFERENCE_NO'] || '-'}\nTracking: ${r.raw['Tracking Number'] || '-'}\nDATE: ${dateVal}\nชื่อ: ${r.raw['CUSTOMER_NAME'] || '-'}\nโทร: ${r.raw['PHONE'] || '-'}\nที่อยู่: ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}\n${itemsCopyText}${r.raw['REMARKS'] ? `\nCOD: ${r.raw['REMARKS']}` : ''}\nReceiving Date: ${receivingDateVal}\nStatus: ${statusVal}\nRemark: ${remarkVal}`;
+
+        const itemsHtml = r.items.map(it => `
+          <div><span class="font-semibold text-gray-900">สินค้า:</span> ${it.itemNo} <span class="font-semibold text-gray-900">จำนวน:</span> ${it.qty} ${it.uom}</div>
+        `).join('');
 
         const card = document.createElement('div');
         card.className = 'bg-gray-50 border border-gray-200 rounded-lg p-3.5 text-xs text-gray-700 space-y-1.5 shadow-sm relative group';
@@ -204,10 +263,11 @@
           <div><span class="font-semibold text-gray-900">DATE:</span> ${dateVal}</div>
           <div><span class="font-semibold text-gray-900">ชื่อลูกค้า:</span> ${r.raw['CUSTOMER_NAME'] || '-'} (${r.raw['PHONE'] || '-'})</div>
           <div><span class="font-semibold text-gray-900">ที่อยู่:</span> ${fullAddress || '-'} ${r.raw['POST_CODE'] || ''}</div>
-          <div class="flex gap-4">
-            <span><span class="font-semibold text-gray-900">สินค้า:</span> ${r.raw['ITEM_NO'] || '-'}</span>
-            <span><span class="font-semibold text-gray-900">จำนวน:</span> ${r.raw['QTY'] || '-'} ${r.raw['UOM'] || ''}</span>
+          
+          <div class="bg-white p-2 rounded border border-gray-200 space-y-1 my-1">
+            ${itemsHtml}
           </div>
+
           ${r.raw['REMARKS'] ? `<div class="text-gray-500 italic"><span class="font-semibold">COD:</span> ${r.raw['REMARKS']}</div>` : ''}
           
           <div class="border-t pt-1.5 mt-1.5 space-y-1 text-gray-800">
@@ -239,28 +299,32 @@
     function exportExcel() {
       if (currentResults.length === 0) return alert('ไม่มีข้อมูลสำหรับส่งออก');
       
-      const exportData = currentResults.map(r => {
+      const exportData = [];
+
+      currentResults.forEach(r => {
         const fullAddress = [
           r.raw['ที่อยู่'], r.raw['ซอย'], r.raw['ถนน'], r.raw['ตำบล'], r.raw['อำเภอ'], r.raw['จังหวัด']
         ].filter(Boolean).join(' ');
 
-        return {
-          "LINE_NO": r.raw['LINE_NO'] || "",
-          "DATE": formatDate(r.raw['DATE']),
-          "REFERENCE_NO": r.raw['REFERENCE_NO'] || "",
-          "REMARKS": r.raw['REMARKS'] || "",
-          "ITEM_NO": r.raw['ITEM_NO'] || "",
-          "QTY": r.raw['QTY'] || "",
-          "UOM": r.raw['UOM'] || "",
-          "CUSTOMER_NAME": r.raw['CUSTOMER_NAME'] || "",
-          "ADDRESS": fullAddress,
-          "POST_CODE": r.raw['POST_CODE'] || "",
-          "PHONE": r.raw['PHONE'] || "",
-          "Tracking Number": r.raw['Tracking Number'] || "",
-          "Receiving Date": formatDate(r.raw['Receiving Date']),
-          "Status": r.raw['Status'] || "",
-          "Remark": r.raw['Remark'] || ""
-        };
+        r.items.forEach(it => {
+          exportData.push({
+            "LINE_NO": r.raw['LINE_NO'] || "",
+            "DATE": formatDate(r.raw['DATE']),
+            "REFERENCE_NO": r.raw['REFERENCE_NO'] || "",
+            "REMARKS": r.raw['REMARKS'] || "",
+            "ITEM_NO": it.itemNo,
+            "QTY": it.qty,
+            "UOM": it.uom,
+            "CUSTOMER_NAME": r.raw['CUSTOMER_NAME'] || "",
+            "ADDRESS": fullAddress,
+            "POST_CODE": r.raw['POST_CODE'] || "",
+            "PHONE": r.raw['PHONE'] || "",
+            "Tracking Number": r.raw['Tracking Number'] || "",
+            "Receiving Date": formatDate(r.raw['Receiving Date']),
+            "Status": r.raw['Status'] || "",
+            "Remark": r.raw['Remark'] || ""
+          });
+        });
       });
 
       const ws = XLSX.utils.json_to_sheet(exportData);
